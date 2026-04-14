@@ -1,0 +1,23 @@
+# Mock vendor APIs + static assets. From repo root:
+#   docker compose up --build
+#
+# OpenAPI: http://localhost:8080/docs
+# If n8n runs on the host, keep BASE_URL=http://localhost:8080 so URLs in JSON work.
+# If n8n runs in Docker and calls mock on the host, set BASE_URL=http://172.17.0.1:8080 (or host.docker.internal)
+# so *_url fields in JSON are reachable from the n8n container.
+# If another container must call this service, set BASE_URL to that reachable host
+# (e.g. http://mock-api:8080 for compose DNS).
+
+services:
+  mock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      BASE_URL: http://localhost:8080
+      ASSETS_DIR: /app/mock_assets
+      SCENE_COUNT: "5"
+    volumes:
+      - ./mock_assets:/app/mock_assets:ro

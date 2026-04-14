@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/documentary_script_and_scenes.json",
+  "title": "DocumentaryScriptAndScenes",
+  "description": "Structured script + per-scene narration and image prompts for the AI video pipeline (OpenAI GPT-4o structured outputs).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Working title for the episode."
+    },
+    "full_script": {
+      "type": "string",
+      "description": "Full narration script as continuous prose (used for TTS)."
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Ordered scenes: one still image + VO segment + optional motion intent later.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scene_id": {
+            "type": "integer",
+            "description": "1-based scene index."
+          },
+          "narration_text": {
+            "type": "string",
+            "description": "Spoken lines for this scene (subset of full_script)."
+          },
+          "visual_prompt": {
+            "type": "string",
+            "description": "Cinematic still-image prompt for ComfyUI / SDXL."
+          },
+          "negative_prompt": {
+            "type": "string",
+            "description": "Negative prompt; use empty string if none."
+          },
+          "approx_duration_sec": {
+            "type": "number",
+            "description": "Target VO duration for this scene in seconds."
+          }
+        },
+        "required": [
+          "scene_id",
+          "narration_text",
+          "visual_prompt",
+          "negative_prompt",
+          "approx_duration_sec"
+        ]
+      }
+    }
+  },
+  "required": ["title", "full_script", "scenes"]
+}

@@ -1,0 +1,300 @@
+{
+  "id": "a0f3bdaf-d0b3-4e5a-873a-64eb874f420b",
+  "name": "AI Video Pipeline — Google Sheet + Mock (Phase 3)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "triggerOAuth2",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_SPREADSHEET_ID",
+          "mode": "id",
+          "cachedResultName": "Set spreadsheet ID in n8n after import"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name",
+          "cachedResultName": "Sheet1"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "5300a3fb-a376-4d56-9075-e5feaa7cb74e",
+      "name": "Google Sheets Trigger",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Only continue when status is QUEUED (case-insensitive)\nconst row = $input.first().json;\nconst st = String(row.status ?? '').trim().toUpperCase();\nif (st !== 'QUEUED') return [];\nreturn $input.all();\n"
+      },
+      "id": "7c10ced3-16c5-423e-b022-4a68720eb705",
+      "name": "Only status QUEUED",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "25e61fdc-4eb9-4242-a3b9-0e1df242faa1",
+              "name": "row_number",
+              "value": "={{ Number($json.sheet_row ?? $json.row_number) || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "d3861353-1bed-4b31-8436-e5a464e940ce",
+              "name": "topic",
+              "value": "={{ $json.topic || $json.prompt || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "93426cf8-5acf-469d-b576-f34c06f74402",
+              "name": "vendor_base_url",
+              "value": "={{ $json.vendor_base_url || 'http://172.17.0.1:8080' }}",
+              "type": "string"
+            },
+            {
+              "id": "e18b9404-f6ce-4cb0-9f5e-a8c76dcc73fc",
+              "name": "max_scenes",
+              "value": "={{ $json.max_scenes || 5 }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7f38c838-7013-4626-80c3-caa4442e4c92",
+      "name": "Pipeline config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build OpenAI chat/completions body (json_schema). No credentials here — OpenAI is called by the HTTP Request node.\n// SCHEMA injected by scripts/build_n8n_workflow.py\nconst SCHEMA = {\"title\":\"DocumentaryScriptAndScenes\",\"description\":\"Structured script + per-scene narration and image prompts for the AI video pipeline (OpenAI GPT-4o structured outputs).\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"title\":{\"type\":\"string\",\"description\":\"Working title for the episode.\"},\"full_script\":{\"type\":\"string\",\"description\":\"Full narration script as continuous prose (used for TTS).\"},\"scenes\":{\"type\":\"array\",\"description\":\"Ordered scenes: one still image + VO segment + optional motion intent later.\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"scene_id\":{\"type\":\"integer\",\"description\":\"1-based scene index.\"},\"narration_text\":{\"type\":\"string\",\"description\":\"Spoken lines for this scene (subset of full_script).\"},\"visual_prompt\":{\"type\":\"string\",\"description\":\"Cinematic still-image prompt for ComfyUI / SDXL.\"},\"negative_prompt\":{\"type\":\"string\",\"description\":\"Negative prompt; use empty string if none.\"},\"approx_duration_sec\":{\"type\":\"number\",\"description\":\"Target VO duration for this scene in seconds.\"}},\"required\":[\"scene_id\",\"narration_text\",\"visual_prompt\",\"negative_prompt\",\"approx_duration_sec\"]}}},\"required\":[\"title\",\"full_script\",\"scenes\"]};\n\nconst cfg = $input.first().json;\nconst topic = cfg.topic;\n\nconst openaiBody = {\n  model: 'gpt-4o-mini',\n  messages: [\n    {\n      role: 'system',\n      content:\n        'You are a documentary scriptwriter for a faceless YouTube channel. Output must match the JSON schema. Use cinematic, desaturated documentary tone. Keep scene count reasonable (e.g. at most 8 scenes).',\n    },\n    {\n      role: 'user',\n      content: `Topic: ${topic}\\n\\nProduce title, full_script, and scenes with distinct visual_prompt per scene.`,\n    },\n  ],\n  response_format: {\n    type: 'json_schema',\n    json_schema: {\n      name: 'script_and_scenes',\n      strict: true,\n      schema: SCHEMA,\n    },\n  },\n};\n\nreturn [{ json: { openaiBody } }];\n"
+      },
+      "id": "ca6c2e99-c9ee-4c66-8c18-5fd8e4bcce91",
+      "name": "Build OpenAI request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.openaiBody }}",
+        "options": {}
+      },
+      "id": "81cb56f4-ea40-4ef5-9032-88955f7ada59",
+      "name": "OpenAI Chat Completions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse OpenAI response + call mock vendors (GenAIPro, RunPod, Runway, Suno, Creatomate).\n// OpenAI response is on $input; pipeline fields come from the \"Pipeline config\" Set node (no credentials in Code sandbox).\n\nasync function httpJson(ctx, method, url, body) {\n  const opt = {\n    method,\n    url,\n    headers: { 'Content-Type': 'application/json' },\n  };\n  if (body !== undefined && body !== null) {\n    opt.body = JSON.stringify(body);\n  }\n  return await ctx.helpers.httpRequest(opt);\n}\n\nconst cfg = $('Pipeline config').first().json;\nconst topic = cfg.topic;\n// Default: Docker bridge gateway to host (n8n in Docker cannot use 127.0.0.1 for mock on host).\nconst base = String(cfg.vendor_base_url || 'http://172.17.0.1:8080').replace(/\\/+$/, '');\nconst maxScenes = Number(cfg.max_scenes) || 5;\n\nconst oa = $input.first().json;\nif (oa.error) {\n  throw new Error(`OpenAI error: ${JSON.stringify(oa.error)}`);\n}\n\nconst jsonText = oa.choices[0].message.content;\nconst script = JSON.parse(jsonText);\n\nconst tts = await httpJson(this, 'POST', `${base}/v1/genaipro/tts`, {\n  text: script.full_script,\n  voice_id: 'documentary',\n  format: 'mp3',\n});\nconst voiceUrl = tts.audio_url;\n\nconst scenes = (script.scenes || []).slice(0, maxScenes);\nconst sceneResults = [];\n\nfor (const scene of scenes) {\n  const rp = await httpJson(this, 'POST', `${base}/v1/runpod/comfy`, {\n    input: { workflow: { prompt: scene.visual_prompt } },\n  });\n  const rpData = await httpJson(this, 'GET', `${base}/v1/runpod/comfy/${rp.id}`);\n  const imageUrl = rpData.output.images[0].url;\n\n  const rw = await httpJson(this, 'POST', `${base}/v1/runway/video`, {\n    image_url: imageUrl,\n    prompt: `cinematic motion, ${scene.visual_prompt}`,\n    duration_sec: Math.min(30, Math.round(Number(scene.approx_duration_sec) || 5)),\n  });\n  const rwDone = await httpJson(this, 'GET', `${base}/v1/runway/video/${rw.task_id}`);\n\n  sceneResults.push({\n    scene_id: scene.scene_id,\n    image_url: imageUrl,\n    video_url: rwDone.video_url,\n  });\n}\n\nconst suno = await httpJson(this, 'POST', `${base}/v1/suno/generate`, {\n  prompt: `dark documentary ambient music for: ${script.title}`,\n  instrumental: true,\n  n_variants: 4,\n});\n\nconst cm = await httpJson(this, 'POST', `${base}/v1/creatomate/renders`, {\n  template_id: 'pipeline_v1',\n  modifications: {\n    SceneVideos: sceneResults.map((s) => s.video_url),\n    VoiceUrl: voiceUrl,\n    MusicUrl: suno.tracks[0].audio_url,\n  },\n});\nconst final = await httpJson(this, 'GET', `${base}/v1/creatomate/renders/${cm.render_id}`);\n\nreturn [\n  {\n    json: {\n      title: script.title,\n      topic,\n      vendor_base_url: base,\n      voice_url: voiceUrl,\n      suno_tracks: suno.tracks,\n      scene_results: sceneResults,\n      final_mp4_url: final.url,\n      creatomate_render_id: final.render_id,\n      manifest: {\n        script,\n        scene_results: sceneResults,\n        voice_url: voiceUrl,\n        music_urls: suno.tracks.map((t) => t.audio_url),\n        final_video: final.url,\n      },\n    },\n  },\n];\n"
+      },
+      "id": "d629036a-8df6-44c0-ba86-fa099b3b953a",
+      "name": "Parse + mock pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build row fields for Google Sheets \"Update Row\" (auto-map). Match on the real column **sheet_row**\n// (=ROW() value). Do not use n8n's virtual \"row_number\" match unless a column named row_number exists.\nconst pipeline = $input.first().json;\nconst cfg = $('Pipeline config').first().json;\n\nconst rowNum = Number(cfg.row_number ?? cfg.sheet_row);\nif (!Number.isFinite(rowNum) || rowNum < 2) {\n  throw new Error(\n    'Add a column sheet_row with =ROW() on each data row (see templates/google_sheet_columns.csv). The rowAdded trigger does not include row numbers; =ROW() gives the row to update.',\n  );\n}\n\nreturn [\n  {\n    json: {\n      sheet_row: rowNum,\n      status: 'COMPLETE',\n      output_mp4_url: pipeline.final_mp4_url ?? '',\n      voice_url: pipeline.voice_url ?? '',\n      script_json_url: '',\n      error_message: '',\n      n8n_execution_url: '',\n    },\n  },\n];\n"
+      },
+      "id": "d16b3310-2701-454d-bc40-327e85eb94f6",
+      "name": "Prepare sheet row update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_SPREADSHEET_ID",
+          "mode": "id",
+          "cachedResultName": "Set spreadsheet ID in n8n after import"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "sheet_row"
+          ],
+          "value": null,
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt",
+          "locationDefine": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 1,
+              "firstDataRow": 2
+            }
+          }
+        }
+      },
+      "id": "636ba1b2-ee7c-4f1c-b36a-95b20d16a5a5",
+      "name": "Update row in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Google Sheet = start here\n\n**Sheet columns** (header row): use [templates/google_sheet_columns.csv](../templates/google_sheet_columns.csv).\n\n1. Create a spreadsheet; paste headers. Set **document ID** in **Google Sheets Trigger** and **Update row in sheet** (from URL between `/d/` and `/edit`).\n2. Headers: include **sheet_row** — in row 2 put `=ROW()` and fill down so each row has its sheet row number (used to update the row; no manual id needed). Add **topic** (or **prompt**), **status**=`QUEUED`, optional **vendor_base_url**, **max_scenes**.\n3. **Credentials:** trigger + **Update row in sheet** use **Google Sheets OAuth2**; **OpenAI Chat Completions** uses **OpenAI API**.\n4. **Activate** the workflow; new rows with `QUEUED` run after the next poll.\n\n**Mock URL:** if **n8n runs in Docker**, set **vendor_base_url** to `http://172.17.0.1:8080` (or put that in the sheet column) — `127.0.0.1` points at the n8n container, not your host.\n\n**Update row** matches column **sheet_row** (=ROW value). Headers must match [templates/google_sheet_columns.csv](../templates/google_sheet_columns.csv) exactly (case-sensitive).",
+        "height": 520,
+        "width": 460
+      },
+      "id": "edaf69f1-ddb7-4409-ac52-04800d314dcd",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        -380
+      ]
+    }
+  ],
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Only status QUEUED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only status QUEUED": {
+      "main": [
+        [
+          {
+            "node": "Pipeline config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline config": {
+      "main": [
+        [
+          {
+            "node": "Build OpenAI request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat Completions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Completions": {
+      "main": [
+        [
+          {
+            "node": "Parse + mock pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + mock pipeline": {
+      "main": [
+        [
+          {
+            "node": "Prepare sheet row update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare sheet row update": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "tags": []
+}

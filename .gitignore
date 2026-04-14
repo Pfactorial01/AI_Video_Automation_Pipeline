@@ -1,0 +1,38 @@
+# Secrets (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Generated mock media (regenerate before Docker: ./mock_assets/generate_mock_assets.sh)
+mock_assets/*.mp4
+mock_assets/*.mp3
+mock_assets/*.png
+
+# Logs
+*.log
